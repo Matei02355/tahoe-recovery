@@ -1,4 +1,4 @@
-name: Tahoe Beta (latest) Recovery Image
+name: macOS Big Sur (11) Recovery Image
 
 on:
   workflow_dispatch:
@@ -13,51 +13,67 @@ jobs:
         run: |
           git clone https://github.com/corpnewt/gibMacOS.git
 
-      - name: Download macOS Installer (latest beta)
+      - name: Download macOS Big Sur Installer
         run: |
-          python ./gibMacOS/gibMacOS.py -c developer -v big sur -m 11 -o /tmp/Big-Sur
+          mkdir -p /tmp/BigSur
+          cd gibMacOS
+          # Fetch full macOS Big Sur installer (version 11)
+          python gibMacOS.py -r -v 11 -o /tmp/BigSur
 
-      - name: Install the assistant
+      - name: Build macOS Big Sur Installer
         run: |
-          sudo installer -pkg /tmp/Big-Sur/InstallAssistant.pkg -target /
+          INSTALLER_PKG=$(find /tmp/BigSur -name "InstallAssistant.pkg" | head -n 1 || true)
+          if [ ! -f "$INSTALLER_PKG" ]; then
+            echo "❌ Could not find InstallAssistant.pkg for Big Sur"
+            ls -R /tmp/BigSur
+            exit 1
+          fi
 
-      - name: Generate macOS Installer
+          echo "Found installer package: $INSTALLER_PKG"
+          sudo installer -pkg "$INSTALLER_PKG" -target /
+
+      - name: Create Big Sur DMG and BaseSystem
         run: |
-          INSTALLER=$(ls -d /Applications/Install*.app | head -n 1 || true)
+          INSTALLER=$(ls -d /Applications/Install\ macOS\ Big\ Sur*.app | head -n 1 || true)
           if [ ! -d "$INSTALLER" ]; then
-            echo "Could not find Install macOS app in /Applications"
+            echo "❌ Could not find Install macOS Big Sur.app in /Applications"
             ls -l /Applications
             exit 1
           fi
+
           SIZE_MB=$(du -sm "$INSTALLER" | cut -f1)
-
-          # Add 40% headroom and ceil
           EXTRA=$(echo "($SIZE_MB * 0.4 + 0.999)/1" | bc)
-
           TOTAL_MB=$(( SIZE_MB + EXTRA ))
 
           echo "Installer size: $SIZE_MB MB"
           echo "Allocating DMG size: $TOTAL_MB MB"
 
-          sudo hdiutil create -o /tmp/Tahoe -size ${TOTAL_MB}m -volname 'Tahoe' -layout SPUD -fs HFS+J
-          sudo hdiutil attach /tmp/Tahoe.dmg -noverify -mountpoint /Volumes/Tahoe
+          sudo hdiutil create -o /tmp/BigSur -size ${TOTAL_MB}m -volname 'BigSur' -layout SPUD -fs HFS+J
+          sudo hdiutil attach /tmp/BigSur.dmg -noverify -mountpoint /Volumes/BigSur
           sleep 10
-          sudo "$INSTALLER/Contents/Resources/createinstallmedia" --volume /Volumes/Tahoe --nointeraction
 
-          # Detect created installer volume (it always starts with "Install")
+          sudo "$INSTALLER/Contents/Resources/createinstallmedia" --volume /Volumes/BigSur --nointeraction
+
           INSTALL_VOL=$(ls -d /Volumes/Install* | head -n 1 || true)
           if [ ! -d "$INSTALL_VOL" ]; then
-            echo "Could not find installer volume in /Volumes"
+            echo "❌ Could not find installer volume"
             ls -l /Volumes
             exit 1
           fi
-          echo "Found installer volume: $INSTALL_VOL"
 
-          cp -R "$INSTALL_VOL/BaseSystem" /tmp/BaseSystem
+          echo "✅ Found installer volume: $INSTALL_VOL"
 
-      - name: Upload com.apple.recovery.boot
+          mkdir -p /tmp/BaseSystem
+          cp -R "$INSTALL_VOL/BaseSystem" /tmp/BaseSystem/
+
+      - name: Compress Recovery Image
+        run: |
+          cd /tmp/BaseSystem
+          zip -r9 /tmp/macOS_BigSur_Recovery.zip *
+
+      - name: Upload macOS Big Sur Recovery ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: com.apple.recovery.boot
-          path: /tmp/BaseSystem/*
+          name: macOS-BigSur-Recovery
+          path: /tmp/macOS_BigSur_Recovery.zip
           compression-level: 9
