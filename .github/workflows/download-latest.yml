@@ -17,22 +17,24 @@ jobs:
 
       - name: Patch macrecovery.py to avoid TTY errors
         run: |
-          # Replace terminal size check with a fixed fallback to prevent OSError
+          # Replace terminal size check with a fixed fallback
           sed -i '' 's/os.get_terminal_size().columns/80/' OpenCorePkg/Utilities/macrecovery/macrecovery.py
 
       - name: Download macOS Big Sur Recovery
         run: |
           cd OpenCorePkg/Utilities/macrecovery
-
           echo "🔍 Forcing macOS Big Sur (11.x) recovery image..."
+          
           # iMac20,1 board ID (Big Sur-capable Mac)
           python macrecovery.py -b Mac-E43C1C25D4880AD6 -m 00000000000000000 download
 
-          echo "✅ Download complete. Moving files to /tmp/BigSurRecovery"
-          mv *.dmg /tmp/BigSurRecovery/ || true
-          mv *.chunklist /tmp/BigSurRecovery/ || true
+          echo "✅ Download complete. Moving recovery files..."
+          # Move recovery files into the correct temp folder
+          if [ -d "com.apple.recovery.boot" ]; then
+            mv com.apple.recovery.boot/* /tmp/BigSurRecovery/
+          fi
 
-          echo "📂 Recovery files:"
+          echo "📂 Recovery folder contents:"
           ls -lh /tmp/BigSurRecovery
 
       - name: Compress Recovery Files into ZIP
