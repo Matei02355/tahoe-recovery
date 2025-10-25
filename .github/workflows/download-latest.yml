@@ -1,4 +1,4 @@
-name: macOS Big Sur (11) Recovery Image
+name: macOS Big Sur (11) Recovery ZIP
 
 on:
   workflow_dispatch:
@@ -7,69 +7,36 @@ jobs:
   build:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - name: Clone gibMacOS
+      - name: Clone OpenCorePkg (for macrecovery.py)
         run: |
-          git clone https://github.com/corpnewt/gibMacOS.git
+          git clone https://github.com/acidanthera/OpenCorePkg.git
+          mkdir -p /tmp/BigSurRecovery
 
-      - name: Download macOS Big Sur Installer
+      - name: Download macOS Big Sur Recovery
         run: |
-          mkdir -p /tmp/BigSur
-          cd gibMacOS
-          # Fetch full macOS Big Sur installer (version 11)
-          python gibMacOS.py -r -v 11 -o /tmp/BigSur
+          cd OpenCorePkg/Utilities/macrecovery
 
-      - name: Build macOS Big Sur Installer
+          echo "🔍 Forcing macOS Big Sur (11.x) recovery image..."
+          # iMac20,1 board ID (shipped with macOS 11 Big Sur)
+          # -b = board ID, -m = fake MLB serial (unused)
+          python macrecovery.py -b Mac-E43C1C25D4880AD6 -m 00000000000000000 download
+
+          echo "✅ Download complete. Moving files to /tmp/BigSurRecovery"
+          mv *.dmg /tmp/BigSurRecovery/ || true
+          mv *.chunklist /tmp/BigSurRecovery/ || true
+
+          echo "Contents of recovery folder:"
+          ls -lh /tmp/BigSurRecovery
+
+      - name: Compress Recovery Files into ZIP
         run: |
-          INSTALLER_PKG=$(find /tmp/BigSur -name "InstallAssistant.pkg" | head -n 1 || true)
-          if [ ! -f "$INSTALLER_PKG" ]; then
-            echo "❌ Could not find InstallAssistant.pkg for Big Sur"
-            ls -R /tmp/BigSur
-            exit 1
-          fi
-
-          echo "Found installer package: $INSTALLER_PKG"
-          sudo installer -pkg "$INSTALLER_PKG" -target /
-
-      - name: Create Big Sur DMG and BaseSystem
-        run: |
-          INSTALLER=$(ls -d /Applications/Install\ macOS\ Big\ Sur*.app | head -n 1 || true)
-          if [ ! -d "$INSTALLER" ]; then
-            echo "❌ Could not find Install macOS Big Sur.app in /Applications"
-            ls -l /Applications
-            exit 1
-          fi
-
-          SIZE_MB=$(du -sm "$INSTALLER" | cut -f1)
-          EXTRA=$(echo "($SIZE_MB * 0.4 + 0.999)/1" | bc)
-          TOTAL_MB=$(( SIZE_MB + EXTRA ))
-
-          echo "Installer size: $SIZE_MB MB"
-          echo "Allocating DMG size: $TOTAL_MB MB"
-
-          sudo hdiutil create -o /tmp/BigSur -size ${TOTAL_MB}m -volname 'BigSur' -layout SPUD -fs HFS+J
-          sudo hdiutil attach /tmp/BigSur.dmg -noverify -mountpoint /Volumes/BigSur
-          sleep 10
-
-          sudo "$INSTALLER/Contents/Resources/createinstallmedia" --volume /Volumes/BigSur --nointeraction
-
-          INSTALL_VOL=$(ls -d /Volumes/Install* | head -n 1 || true)
-          if [ ! -d "$INSTALL_VOL" ]; then
-            echo "❌ Could not find installer volume"
-            ls -l /Volumes
-            exit 1
-          fi
-
-          echo "✅ Found installer volume: $INSTALL_VOL"
-
-          mkdir -p /tmp/BaseSystem
-          cp -R "$INSTALL_VOL/BaseSystem" /tmp/BaseSystem/
-
-      - name: Compress Recovery Image
-        run: |
-          cd /tmp/BaseSystem
+          cd /tmp/BigSurRecovery
+          echo "📦 Creating ZIP archive..."
           zip -r9 /tmp/macOS_BigSur_Recovery.zip *
+          ls -lh /tmp/macOS_BigSur_Recovery.zip
 
       - name: Upload macOS Big Sur Recovery ZIP
         uses: actions/upload-artifact@v4
