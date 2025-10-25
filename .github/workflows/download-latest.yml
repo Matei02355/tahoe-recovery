@@ -15,20 +15,24 @@ jobs:
           git clone https://github.com/acidanthera/OpenCorePkg.git
           mkdir -p /tmp/BigSurRecovery
 
+      - name: Patch macrecovery.py to avoid TTY errors
+        run: |
+          # Replace terminal size check with a fixed fallback to prevent OSError
+          sed -i '' 's/os.get_terminal_size().columns/80/' OpenCorePkg/Utilities/macrecovery/macrecovery.py
+
       - name: Download macOS Big Sur Recovery
         run: |
           cd OpenCorePkg/Utilities/macrecovery
 
           echo "🔍 Forcing macOS Big Sur (11.x) recovery image..."
-          # iMac20,1 board ID (shipped with macOS 11 Big Sur)
-          # -b = board ID, -m = fake MLB serial (unused)
+          # iMac20,1 board ID (Big Sur-capable Mac)
           python macrecovery.py -b Mac-E43C1C25D4880AD6 -m 00000000000000000 download
 
           echo "✅ Download complete. Moving files to /tmp/BigSurRecovery"
           mv *.dmg /tmp/BigSurRecovery/ || true
           mv *.chunklist /tmp/BigSurRecovery/ || true
 
-          echo "Contents of recovery folder:"
+          echo "📂 Recovery files:"
           ls -lh /tmp/BigSurRecovery
 
       - name: Compress Recovery Files into ZIP
